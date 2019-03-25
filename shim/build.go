@@ -45,6 +45,7 @@ func main() {
 	err = createInitShim()
 
 	if err != nil {
+		restoreImportsFile()
 		fmt.Fprintf(os.Stderr, "Error Encountered in initialization of shim.. %v\n", err)
 		os.Exit(1)
 	}
@@ -52,6 +53,7 @@ func main() {
 	err = startFunc(pwd)
 
 	if err != nil {
+		restoreImportsFile()
 		fmt.Fprintf(os.Stderr, "Error Encountered in starting function.. %v\n", err)
 		os.Exit(1)
 	}
@@ -90,8 +92,8 @@ func createInitShim() error {
 	if err != nil {
 		return err
 	}
-	//Remove build file...
-	err = os.Remove(buildShimFile)
+	//Rename build.go file to avoid confusion in gcloud tool...
+	err = os.Rename(buildShimFile, buildShimFile+".bak")
 
 	if err != nil {
 		return err
@@ -148,11 +150,15 @@ func startFunc(pwd string) error {
 
 	//Add the " _ shim/shim" imports to shim.go
 	addShimImportToFile(shimFile, "shim/shim")
+	cmd := exec.Command("gcloud", "functions", "deploy", "Handle", "--runtime", "go111", "--trigger-http")
 
-	stdOut, err := exec.Command("gcloud", "functions", "deploy", "Handle", "--runtime", "go111", "--trigger-http").CombinedOutput()
-	fmt.Fprintf(os.Stdout, string(stdOut))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+
 	if err != nil {
-		return err
+		return fmt.Errorf(string(out.Bytes()))
 	}
 
 	return nil
@@ -175,4 +181,9 @@ func addShimImportToFile(shimFile, pkg string) error {
 		return err
 	}
 	return nil
+}
+
+func restoreImportsFile() {
+	_ = os.Rename(newImports, oldImports)
+
 }
