@@ -159,7 +159,7 @@ func startFunc(pwd string) error {
 	err := cmd.Run()
 
 	if err != nil {
-		return fmt.Errorf(err)
+		return err
 	}
 
 	return nil
