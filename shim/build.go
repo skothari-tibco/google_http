@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"io/ioutil"
 	"os"
@@ -24,6 +25,7 @@ var (
 	newImports     string
 	oldImports     string
 	modFile        string
+	buildShimFile  string
 )
 
 func main() {
@@ -39,15 +41,11 @@ func main() {
 	}
 
 	setVars(pwd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error Encountered.. %v\n", err)
-		os.Exit(1)
-	}
 
 	err = createInitShim()
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error Encountered.. %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error Encountered in initialization of shim.. %v\n", err)
 		os.Exit(1)
 	}
 
@@ -73,6 +71,8 @@ func setVars(pwd string) {
 	newImports = filepath.Join(pwd, shimDir, "imports.go")
 	oldImports = filepath.Join(pwd, "imports.go")
 
+	buildShimFile = filepath.Join(pwd, "build.go")
+
 }
 
 func createInitShim() error {
@@ -90,8 +90,15 @@ func createInitShim() error {
 	if err != nil {
 		return err
 	}
+	//Remove build file...
+	err = os.Remove(buildShimFile)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }
+
 func copyAndSet(oldFile, newFile string) error {
 
 	var err error
@@ -110,6 +117,7 @@ func copyAndSet(oldFile, newFile string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -132,25 +140,39 @@ func setPkg(file string) error {
 }
 
 func startFunc(pwd string) error {
-	//Add the " _ shim/shim" imports to shim.go
+
 	shimFile := filepath.Join(pwd, "shim.go")
+
+	//Change mod main to mod shim in go.mod
 	setPkg(modFile)
 
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, shimFile, nil, parser.ImportsOnly)
-	if err != nil {
-		return err
-	}
+	//Add the " _ shim/shim" imports to shim.go
+	addShimImportToFile(shimFile, "shim/shim")
 
-	if !util.AddImport(fset, file, "shim/shim") {
-		return errors.New("Error in adding package to shim file")
-	}
-
-	stdOut, err := exec.Command("gcloud", "functions", "deploy", "shim", "--entry-point", "Handle", "--runtime", "go111", "--trigger-http").CombinedOutput()
+	stdOut, err := exec.Command("gcloud", "functions", "deploy", "Handle", "--runtime", "go111", "--trigger-http").CombinedOutput()
 	fmt.Fprintf(os.Stdout, string(stdOut))
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func addShimImportToFile(shimFile, pkg string) error {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, shimFile, nil, 0)
+	if err != nil {
+		return err
+	}
+
+	if !util.AddImport(fset, file, pkg) {
+		return errors.New("Error in adding package to shim file")
+	}
+
+	f, err := os.Create(shimFile)
+	defer f.Close()
+	if err := printer.Fprint(f, fset, file); err != nil {
+		return err
+	}
 	return nil
 }
