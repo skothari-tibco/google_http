@@ -57,6 +57,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error Encountered in starting function.. %v\n", err)
 		os.Exit(1)
 	}
+	restoreImportsFile()
 }
 
 func setVars(pwd string) {
@@ -158,7 +159,7 @@ func startFunc(pwd string) error {
 	err := cmd.Run()
 
 	if err != nil {
-		return fmt.Errorf(string(out.Bytes()))
+		return fmt.Errorf(err)
 	}
 
 	return nil
